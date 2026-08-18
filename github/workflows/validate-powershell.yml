@@ -1,0 +1,60 @@
+name: PowerShell Validation
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Analyze PowerShell Scripts
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer `
+            -Path . `
+            -Recurse `
+            -Severity Error
+
+          if ($results) {
+              $results | Format-Table
+              throw "PSScriptAnalyzer found issues."
+          }
+
+      - name: Validate PowerShell Syntax
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path . -Recurse -Include *.ps1,*.psm1
+
+          foreach ($file in $files) {
+              Write-Host "Checking $($file.FullName)"
+
+              $tokens = $null
+              $errors = $null
+
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                $file.FullName,
+                [ref]$tokens,
+                [ref]$errors
+              ) | Out-Null
+
+              if ($errors.Count -gt 0) {
+                  Write-Error "Syntax errors found in $($file.Name)"
+                  $errors
+                  exit 1
+              }
+          }
+
+          Write-Host "All scripts validated successfully"
